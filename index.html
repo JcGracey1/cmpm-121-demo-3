@@ -1,13 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  </head>
-  <body>
-    <div id="app">
-      <!-- todo -->
-    </div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Geolocation Game</title>
+        <link rel="stylesheet" href="style.css">
+    </head>
+    <body>
+        <div id="app">
+            <div id="controlPanel">
+                <button id="collectCoins" title="collectCoins">Collect Coins</button>
+                <button id="depositCoins" title="depositCoins">Deposit Coins</button>
+            </div>
+            <div id="statusPanel">Player Coins: 0</div>
+            <div id="map"></div>
+        </div>
+        <script type="module" src="/src/main.ts"></script>
+    </body>
 </html>
