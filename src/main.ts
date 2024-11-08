@@ -1,11 +1,8 @@
 import "./style.css";
-// Import Leaflet and styles
 import leaflet from "leaflet";
 import "leaflet/dist/leaflet.css";
-import "./style.css";
-
-// Deterministic random number generator
 import luck from "./luck.ts";
+import { Board, Cell } from "./board.ts";
 
 // Define player starting location (Oakes College)
 const OAKES_CLASSROOM = leaflet.latLng(36.98949379578401, -122.06277128548504);
@@ -16,6 +13,7 @@ const TILE_DEGREES = 0.0001;
 const NEIGHBORHOOD_SIZE = 8;
 const CACHE_SPAWN_PROBABILITY = 0.1;
 
+const board = new Board(TILE_DEGREES, NEIGHBORHOOD_SIZE);
 const map = leaflet.map(document.getElementById("map")!, {
   center: OAKES_CLASSROOM,
   zoom: GAMEPLAY_ZOOM_LEVEL,
@@ -41,29 +39,35 @@ const statusPanel = document.getElementById("statusPanel")!;
 statusPanel.innerHTML = `Player Coins: ${playerCoins}`;
 
 // Create caches within a grid around the player
-function spawnCache(i: number, j: number) {
-  // Define bounds of cache location
+function spawnCache(cell: Cell) {
   const origin = OAKES_CLASSROOM;
   const bounds = leaflet.latLngBounds([
-    [origin.lat + i * TILE_DEGREES, origin.lng + j * TILE_DEGREES],
-    [origin.lat + (i + 1) * TILE_DEGREES, origin.lng + (j + 1) * TILE_DEGREES],
+    [origin.lat + cell.i * TILE_DEGREES, origin.lng + cell.j * TILE_DEGREES],
+    [
+      origin.lat + (cell.i + 1) * TILE_DEGREES,
+      origin.lng + (cell.j + 1) * TILE_DEGREES,
+    ],
   ]);
 
-  // Cache marker
   const rect = leaflet.rectangle(bounds);
   rect.addTo(map);
 
   // Deterministic coin offering for each cache
-  let cacheCoins = Math.floor(luck([i, j, "coins"].toString()) * 10);
+  let cacheCoins = Math.floor(luck([cell.i, cell.j, "coins"].toString()) * 10);
+  const coins = board.generateCoinsForCell(cell, cacheCoins);
 
-  // Popup with options to collect or deposit coins
   rect.bindPopup(() => {
     const popupDiv = document.createElement("div");
     popupDiv.innerHTML = `
-            <div>Cache at "${i},${j}" with ${cacheCoins} coins.</div>
-            <button id="collect">Collect</button>
-            <button id="deposit">Deposit</button>
-        `;
+        <div>Cache at "${cell.i},${cell.j}" with ${cacheCoins} coins.</div>
+        ${
+      coins.map((coin) =>
+        `<div>Coin ID: ${coin.i}:${coin.j}#${coin.serial}</div>`
+      ).join("")
+    }
+        <button id="collect">Collect</button>
+        <button id="deposit">Deposit</button>
+      `;
 
     // Collect coins from the cache
     popupDiv.querySelector<HTMLButtonElement>("#collect")!.addEventListener(
@@ -95,9 +99,9 @@ function spawnCache(i: number, j: number) {
 
 for (let i = -NEIGHBORHOOD_SIZE; i < NEIGHBORHOOD_SIZE; i++) {
   for (let j = -NEIGHBORHOOD_SIZE; j < NEIGHBORHOOD_SIZE; j++) {
-    // Spawn cache with a probability
     if (luck([i, j].toString()) < CACHE_SPAWN_PROBABILITY) {
-      spawnCache(i, j);
+      const cell = board.getCanonicalCell({ i, j });
+      spawnCache(cell);
     }
   }
 }
