@@ -48,6 +48,27 @@ h1 {
   height: 80vh;
 }
 
+#movementControls {
+  display: grid;
+  grid-template-areas:
+    ". up ."
+    "left . right"
+    ". down .";
+}
+
+#move-up {
+  grid-area: up;
+}
+#move-down {
+  grid-area: down;
+}
+#move-left {
+  grid-area: left;
+}
+#move-right {
+  grid-area: right;
+}
+
 button {
   border-radius: 8px;
   border: 1px solid transparent;
