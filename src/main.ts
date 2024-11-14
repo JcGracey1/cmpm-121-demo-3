@@ -4,23 +4,19 @@ import "leaflet/dist/leaflet.css";
 import luck from "./luck.ts";
 import { Board, Cell } from "./board.ts";
 
-// Define player starting location (Oakes College)
+// Player start location
 const OAKES_CLASSROOM = leaflet.latLng(36.98949379578401, -122.06277128548504);
-
-// Gameplay parameters
-const GAMEPLAY_ZOOM_LEVEL = 19;
 const TILE_DEGREES = 0.0001;
-const NEIGHBORHOOD_SIZE = 5; // Reduced neighborhood size to reduce cache density
-const CACHE_SPAWN_PROBABILITY = 0.05; // Lowered spawn probability to reduce cache frequency
-const CACHE_SPAWN_MIN_DISTANCE = 0.001; // Increased minimum distance between caches
+const NEIGHBORHOOD_SIZE = 5;
+const CACHE_SPAWN_PROBABILITY = 0.05;
+const CACHE_SPAWN_MIN_DISTANCE = 0.001;
 
-// Map and board setup
 const board = new Board(TILE_DEGREES, NEIGHBORHOOD_SIZE);
 const map = leaflet.map(document.getElementById("map")!, {
   center: OAKES_CLASSROOM,
-  zoom: GAMEPLAY_ZOOM_LEVEL,
-  minZoom: GAMEPLAY_ZOOM_LEVEL,
-  maxZoom: GAMEPLAY_ZOOM_LEVEL,
+  zoom: 19,
+  minZoom: 19,
+  maxZoom: 19,
   zoomControl: false,
   scrollWheelZoom: false,
 });
@@ -31,10 +27,26 @@ leaflet.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
 }).addTo(map);
 
-const playerMarker = leaflet.marker(OAKES_CLASSROOM).bindTooltip("Player");
-playerMarker.addTo(map);
+const playerPosition = loadPlayerPosition();
+const playerMarker = leaflet.marker(playerPosition).bindTooltip("Player").addTo(
+  map,
+);
+let playerCoins = loadPlayerCoins();
+const movementHistory = loadMovementHistory();
 
-// Movement buttons
+const statusPanel = document.getElementById("statusPanel")!;
+statusPanel.innerHTML = `Player Coins: ${playerCoins}`;
+const cacheStorage = new Map<
+  string,
+  { rect: leaflet.Rectangle; cacheCoins: number }
+>();
+let visibleCacheIds = new Set<string>();
+
+// Movement history polyline
+const movementPolyline = leaflet.polyline(movementHistory, { color: "blue" })
+  .addTo(map);
+
+// Buttons for movement
 document.getElementById("move-up")!.addEventListener(
   "click",
   () => movePlayer(1, 0),
@@ -52,28 +64,107 @@ document.getElementById("move-right")!.addEventListener(
   () => movePlayer(0, 1),
 );
 
-// Track player’s coins
-let playerCoins = 0;
-const statusPanel = document.getElementById("statusPanel")!;
-statusPanel.innerHTML = `Player Coins: ${playerCoins}`;
+// Button for enabling geolocation
+let tracking = false;
+document.getElementById("geo-btn")!.addEventListener(
+  "click",
+  toggleGeolocationTracking,
+);
 
-// Cache storage for Memento pattern
-const cacheStorage = new Map<
-  string,
-  { rect: leaflet.Rectangle; cacheCoins: number }
->();
-let visibleCacheIds = new Set<string>(); // To track which caches are currently visible
+// Button for resetting the game
+document.getElementById("reset-btn")!.addEventListener("click", resetGame);
 
 function movePlayer(dLat: number, dLng: number) {
   const newLat = playerMarker.getLatLng().lat + dLat * TILE_DEGREES;
   const newLng = playerMarker.getLatLng().lng + dLng * TILE_DEGREES;
+  const newPosition = leaflet.latLng(newLat, newLng);
 
-  // Move player marker and update map center
-  playerMarker.setLatLng([newLat, newLng]);
-  map.panTo(playerMarker.getLatLng());
+  playerMarker.setLatLng(newPosition);
+  map.panTo(newPosition);
+  movementHistory.push(newPosition);
+  movementPolyline.addLatLng(newPosition);
 
-  // Update visible caches based on new position
+  saveGameState(newPosition);
   updateVisibleCaches();
+}
+
+function toggleGeolocationTracking() {
+  tracking = !tracking;
+  if (tracking) {
+    navigator.geolocation.watchPosition((position) => {
+      movePlayerToGeolocation(
+        position.coords.latitude,
+        position.coords.longitude,
+      );
+    });
+  }
+}
+
+function movePlayerToGeolocation(lat: number, lng: number) {
+  playerMarker.setLatLng([lat, lng]);
+  map.panTo([lat, lng]);
+  movementHistory.push([lat, lng]);
+  movementPolyline.addLatLng([lat, lng]);
+  saveGameState(leaflet.latLng(lat, lng));
+  updateVisibleCaches();
+}
+
+function resetGame() {
+  if (confirm("Are you sure you want to erase your game state?")) {
+    localStorage.clear();
+    globalThis.location.reload();
+  }
+}
+
+function saveGameState(playerPosition: leaflet.LatLng) {
+  localStorage.setItem("playerPosition", JSON.stringify(playerPosition));
+  localStorage.setItem("playerCoins", playerCoins.toString());
+  localStorage.setItem("movementHistory", JSON.stringify(movementHistory));
+}
+
+function loadPlayerPosition(): leaflet.LatLng {
+  const savedPosition = localStorage.getItem("playerPosition");
+  return savedPosition ? JSON.parse(savedPosition) : OAKES_CLASSROOM;
+}
+
+function loadPlayerCoins(): number {
+  return parseInt(localStorage.getItem("playerCoins") || "0");
+}
+
+function loadMovementHistory(): leaflet.LatLng[] {
+  const savedHistory = localStorage.getItem("movementHistory");
+  return savedHistory ? JSON.parse(savedHistory) : [OAKES_CLASSROOM];
+}
+
+// Cache functions and other required functions remain the same as in your code
+
+// Add event listeners for additional features or optional UI adjustments as needed.
+
+const coinListContainer = document.getElementById("coin-list");
+
+// Function to render coin identifiers
+function updateCoinList() {
+  if (coinListContainer) {
+    coinListContainer.innerHTML = ""; // Clear existing items
+    visibleCacheIds.forEach((cacheId) => {
+      const cache = cacheStorage.get(cacheId);
+      if (cache) {
+        const coinButton = document.createElement("button");
+        coinButton.textContent = `Coin ${cacheId}`;
+        coinButton.addEventListener("click", () => centerOnCache(cacheId));
+        coinListContainer.appendChild(coinButton);
+      }
+    });
+  }
+}
+
+// Function to center map on cache location when a coin identifier is clicked
+function centerOnCache(cacheId: string) {
+  const cache = cacheStorage.get(cacheId);
+  if (cache) {
+    map.panTo(cache.rect.getBounds().getCenter());
+    cache.rect.openPopup(); // Optional: Show popup for the cache if it has one
+  }
 }
 
 function updateVisibleCaches() {
@@ -125,6 +216,9 @@ function updateVisibleCaches() {
 
   // Update the visible cache IDs set
   visibleCacheIds = newVisibleCacheIds;
+
+  // Update the coin list for visible caches
+  updateCoinList();
 }
 
 function isFarEnough(cell: Cell): boolean {
